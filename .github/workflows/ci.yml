@@ -1,0 +1,66 @@
+# Verifies both halves on every push and pull request.
+#
+# The Flutter side builds and analyses on a Linux runner with the stable
+# channel. The Python side only checks that the package imports and the CLI
+# parses its arguments - the index-dependent search path needs a 91 MB sqlite
+# file that this repo does not store, and is exercised by the manual search
+# command documented in README.md.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: app
+        run: flutter analyze
+
+      - name: Test
+        working-directory: app
+        run: flutter test
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build release APK
+        working-directory: app
+        run: flutter build apk --release
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: python -m pip install osmium shapely numpy
+
+      - name: Import check
+        run: PYTHONPATH=mapidx python -c "from mapidx import build, cli, emit, obf, search, translit, vocab; print('imports ok')"
+
+      - name: CLI help
+        run: PYTHONPATH=mapidx python -m mapidx.cli --help
