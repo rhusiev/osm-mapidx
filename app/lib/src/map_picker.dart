@@ -48,7 +48,7 @@ class _MapPickerPageState extends State<MapPickerPage> {
           // OSM tile usage policy wants contact info in the UA so their admins
           // can reach an app that misbehaves. The same UA is reused for every
           // fallback host so the same string reaches every server.
-          userAgent: 'nl.r1a.mapidx/0.1 (https://github.com/rad1an/mapidx)',
+          userAgent: 'nl.r1a.mapidx/0.1 (https://github.com/rhusiev/osm-mapidx)',
           fallbackUrls: const [
             // `d.tile.openstreetmap.org` is the host most likely to fail DNS
             // on mobile carriers, so it is not in the rotation at all; a/b/c
