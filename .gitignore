@@ -1,0 +1,37 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Flutter / Dart / Android
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.packages
+app/build/
+app/.idea/
+app/.gradle/
+app/android/.gradle/
+app/android/local.properties
+app/android/app/release/
+app/android/app/profile/
+app/linux/build/
+app/macos/build/
+app/web/build/
+app/windows/build/
+app/ios/Flutter/Generated.xcconfig
+app/.metadata
+*.iml
+
+# Project artefacts (regenerable, large)
+build/
+data/
+out/
+
+# Editor / OS
+.vscode/
+.DS_Store
+*~
+*.swp

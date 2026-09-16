@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive icon foreground. 108x108 dp canvas; the inner 72 dp is the safe
+     zone (system may mask or pad the outer ring on launchers that shape icons).
+     A white pin centred in that safe zone, on the orange background the
+     adaptive-icon descriptor sets. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30
+                          C42.95,30 34,38.95 34,50
+                          C34,65 54,84 54,84
+                          C54,84 74,65 74,50
+                          C74,38.95 65.05,30 54,30
+                          Z
+                          M54,58
+                          C49.58,58 46,54.42 46,50
+                          C46,45.58 49.58,42 54,42
+                          C58.42,42 62,45.58 62,50
+                          C62,54.42 58.42,58 54,58
+                          Z"/>
+</vector>

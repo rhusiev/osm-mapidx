@@ -1,0 +1,28 @@
+name: mapidx
+description: "Typo-tolerant POI search over an OSM name index, opens hits in OsmAnd via geo: URIs."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  crypto: ^3.0.6
+  flutter_map: ^7.0.2
+  http: ^1.5.0
+  latlong2: ^0.9.1
+  path: ^1.9.0
+  path_provider: ^2.1.6
+  shared_preferences: ^2.3.5
+  sqlite3: ^3.6.0
+  url_launcher: ^6.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
