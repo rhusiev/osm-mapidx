@@ -82,6 +82,12 @@ def normalise(text: str) -> str:
     normalised in Python before they reach the database. The accents go with
     the case: й, ї and ё are held apart from и, і and е by one combining mark,
     which is exactly the kind of difference a typo is.
+
+    Python's NFKD decomposition handles Cyrillic from Unicode 15 onwards (й
+    decomposes to U+0438 and U+0306, the breve), so the only step after that
+    is dropping the combining mark. The Dart side has to do the same folding
+    by hand because there is no NFKD in Dart's stdlib - the `_folded` map in
+    `app/lib/src/text.dart` mirrors this NFKD result.
     """
     decomposed = unicodedata.normalize("NFKD", text.casefold())
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch))

@@ -34,6 +34,13 @@ curl -O https://download.geofabrik.de/europe/ukraine-latest.osm.pbf   # into dat
 ./build_obf.sh lviv
 ```
 
+Unit tests that don't need an OSM extract or a built index (vocab encoding,
+Cyrillic folding, the search engine against an in-memory index):
+
+```bash
+PYTHONPATH=mapidx .venv/bin/python -m unittest discover tests -v
+```
+
 `--region ukraine` runs the whole country with no bbox clip. Geofabrik has no
 oblast-level extracts, so regional runs clip the country file.
 

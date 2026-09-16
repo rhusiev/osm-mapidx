@@ -64,3 +64,6 @@ jobs:
 
       - name: CLI help
         run: PYTHONPATH=mapidx python -m mapidx.cli --help
+
+      - name: Test
+        run: PYTHONPATH=mapidx python -m unittest discover tests -v
