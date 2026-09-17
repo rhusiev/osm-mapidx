@@ -185,16 +185,18 @@ Git flow, with CI gating every push:
 
 - `feature/*` branches open PRs into `develop`; CI runs analyze + tests on
   every push and PR but skips the release step.
-- A `release/x.y.z` branch off `develop` carries the version bump and is
-  merged into `main` with a `--no-ff` merge; that push to `main` runs the
-  `release` job, tags the merge commit as `vX.Y.Z` (read from
-  `app/pubspec.yaml`), and attaches the per-ABI APKs to a GitHub Release
-  named after the same tag.
-- Hotfixes branch from `main`, merge back into both `main` and `develop`.
+- `develop` is the long-lived line and may have its history rewritten when
+  it is convenient.
+- `main` is merged into only (PRs, protected). A release is a merge or a
+  version bump followed by tagging the commit `vX.Y.Z` (matching
+  `app/pubspec.yaml`) and pushing the tag; that verifies the same commit
+  and attaches the per-ABI APKs to a GitHub Release named after the tag.
+- A hotfix is a branch off `main`; fix, tag the next version there, then
+  merge `main` back into `develop`.
 
 The Python and Flutter builds are not coupled at the release step - the
 APK build only depends on the Flutter source, and the OBF build runs
 out-of-band against the OSM pbf. To cut an OsmAnd-map release, copy the
-`out/<Region>_mapidx.obf` into a release branch commit and let the same
-`main`-push workflow attach it; that is not in CI yet because the obf
-step needs `OsmAndMapCreator` checked out beside the project.
+`out/<Region>_mapidx.obf` into a release branch commit and let the release
+workflow attach it; that is not in CI yet because the obf step needs
+`OsmAndMapCreator` checked out beside the project.
