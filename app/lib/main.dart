@@ -510,7 +510,7 @@ class _Hits extends StatelessWidget {
         return ListTile(
           title: Text(hit.name, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(
-            _shortAddress(hit.address),
+            _subtitle(hit),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
@@ -522,6 +522,24 @@ class _Hits extends StatelessWidget {
       },
     );
   }
+}
+
+/// The category as readable words: `amenity=pharmacy` becomes
+/// `amenity · pharmacy`, which is what tells identical names apart.
+String _kind(String category) {
+  final pair = category.split('=');
+  if (pair.length != 2) return category;
+  return '${pair[0]} · ${pair[1].replaceAll('_', ' ')}';
+}
+
+/// The subtitle sorts out hits that share a name: the kind first when there
+/// is one, then the short address.
+String _subtitle(Hit hit) {
+  final address = _shortAddress(hit.address);
+  final kind = hit.isArea ? '' : _kind(hit.category);
+  if (kind.isEmpty) return address;
+  if (address.isEmpty) return kind;
+  return '$kind, $address';
 }
 
 /// OsmAnd-style short subtitle: at most the first settlement and the first
@@ -570,6 +588,11 @@ class _Details extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(hit.name, style: theme.textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text(_kind(hit.category),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.8),
+                )),
             if (hit.address.isNotEmpty) ...[
               const SizedBox(height: 8),
               for (final line in hit.address)
@@ -627,7 +650,7 @@ class _Details extends StatelessWidget {
                       contentPadding: EdgeInsets.zero,
                       title: Text(other.name,
                           maxLines: 1, overflow: TextOverflow.ellipsis),
-                      subtitle: Text(_shortAddress(other.address),
+                      subtitle: Text(_subtitle(other),
                           maxLines: 1, overflow: TextOverflow.ellipsis),
                       onTap: () => onRelated(other),
                     );
