@@ -57,6 +57,7 @@ class Hit {
     required this.score,
     required this.exactCount,
     required this.isArea,
+    required this.category,
     this.metres,
   });
 
@@ -87,6 +88,9 @@ class Hit {
   /// "Львів" hits at 1, so the city itself only stays at the top when areas
   /// outrank POIs in the sort.
   final bool isArea;
+
+  /// The raw OSM tag pair behind the place, `amenity=pharmacy` or `place=village`.
+  final String category;
 
   final double? metres;
 }
@@ -343,6 +347,7 @@ List<Hit> search(Database db, String query,
           exactCount: exacts.where((e) => e).length,
           isArea: category.startsWith('place=') ||
               category.startsWith('boundary=administrative'),
+          category: category,
           metres: origin == null
               ? null
               : _distanceM(origin.$1, origin.$2, lat, lon),

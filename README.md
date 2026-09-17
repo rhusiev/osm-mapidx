@@ -22,7 +22,8 @@ Three artefacts from one place table:
   and a query answers in 2-60 ms, so it can run per keystroke on a phone.
 - `app/build/app/outputs/flutter-apk/app-<abi>-release.apk` - "MapIdx", a small
   Android app that hosts that fuzzy layer: type a query, see hits with
-  context and distance, tap to jump into OsmAnd via `geo:`. One APK per
+  their OSM kind (amenity · pharmacy), context and distance, tap to jump
+  into OsmAnd via `geo:`. One APK per
   CPU architecture (see below).
 
 ## Build
