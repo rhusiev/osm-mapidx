@@ -1,10 +1,17 @@
-# Verifies both halves on every push and pull request.
+# Verifies both halves on every push and pull request, and publishes a
+# GitHub Release with the per-ABI APKs when main is updated.
 #
 # The Flutter side builds and analyses on a Linux runner with the stable
-# channel. The Python side only checks that the package imports and the CLI
-# parses its arguments - the index-dependent search path needs a 91 MB sqlite
-# file that this repo does not store, and is exercised by the manual search
-# command documented in README.md.
+# channel; the build output is uploaded as an artifact so the release job
+# can attach the APKs without rebuilding. The Python side only checks that
+# the package imports and the CLI parses its arguments - the index-dependent
+# search path needs a 91 MB sqlite file that this repo does not store, and
+# is exercised by the manual search command documented in README.md.
+#
+# Releases run only on push to main, mirroring git flow: every merge into
+# main is a release commit and produces a tag of the form vX.Y.Z read from
+# pubspec.yaml. PRs into develop (or main while the project is single-branch)
+# run the verification jobs but skip the release step.
 name: CI
 
 on:
@@ -47,6 +54,13 @@ jobs:
         working-directory: app
         run: flutter build apk --release --split-per-abi
 
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: apks
+          path: app/build/app/outputs/flutter-apk/app-*-release.apk
+          if-no-files-found: error
+
   python:
     runs-on: ubuntu-latest
     steps:
@@ -67,3 +81,33 @@ jobs:
 
       - name: Test
         run: PYTHONPATH=mapidx python -m unittest discover tests -v
+
+  release:
+    needs: [flutter, python]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: apks
+          path: app/build/app/outputs/flutter-apk/
+
+      - name: Read version
+        id: version
+        working-directory: app
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed -E 's/^version: ([^+]+).*/\1/')
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: v${{ steps.version.outputs.VERSION }}
+          generate_release_notes: true
+          files: |
+            app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            app/build/app/outputs/flutter-apk/app-x86_64-release.apk
