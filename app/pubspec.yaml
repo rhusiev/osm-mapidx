@@ -1,7 +1,7 @@
 name: mapidx
 description: "Typo-tolerant POI search over an OSM name index, opens hits in OsmAnd via geo: URIs."
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.1.1+2
 
 environment:
   sdk: ^3.13.2
