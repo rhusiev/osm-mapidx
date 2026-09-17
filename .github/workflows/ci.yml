@@ -43,9 +43,9 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Build release APK
+      - name: Build release APKs
         working-directory: app
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi
 
   python:
     runs-on: ubuntu-latest

@@ -20,9 +20,10 @@ Three artefacts from one place table:
 - `out/<region>-search.sqlite` - a word index for the fuzzy layer, queried
   outside OsmAnd. This is the part that survives typos. 91 MB for Lviv oblast,
   and a query answers in 2-60 ms, so it can run per keystroke on a phone.
-- `app/build/app/outputs/flutter-apk/app-release.apk` - "POI search", a small
+- `app/build/app/outputs/flutter-apk/app-<abi>-release.apk` - "MapIdx", a small
   Android app that hosts that fuzzy layer: type a query, see hits with
-  context and distance, tap to jump into OsmAnd via `geo:`.
+  context and distance, tap to jump into OsmAnd via `geo:`. One APK per
+  CPU architecture (see below).
 
 ## Build
 
@@ -100,17 +101,25 @@ export PATH="$PATH:$HOME/dotfiles/local/share/flutter/bin"
 export JAVA_HOME="$HOME/dotfiles/local/share/jdk"   # Temurin 21; Fedora's /usr/lib/jvm/* are JRE-only
 export ANDROID_HOME="$HOME/.local/share/android-sdk"
 cd app
-flutter build apk --release
+flutter build apk --release --split-per-abi
 ```
 
-Output: `app/build/app/outputs/flutter-apk/app-release.apk` (~53 MB). The
-template signs release with the debug key, so the APK installs for sideloading
-but is not Play-Store ready - swap in a real keystore before publishing.
+Output (`app/build/app/outputs/flutter-apk/`):
+
+- `app-arm64-v8a-release.apk` - 64-bit ARM, the only build modern phones need (~20 MB)
+- `app-armeabi-v7a-release.apk` - 32-bit ARM, older phones (~18 MB)
+- `app-x86_64-release.apk` - x86_64, emulators and Chromebooks (~22 MB)
+
+A single fat APK would be ~58 MB and ships three copies of the same native
+libraries; per-ABI builds pick one. The template signs release with the
+debug key, so the APKs install for sideloading but are not Play-Store ready -
+swap in a real keystore before publishing.
 
 ### Install
 
-1. Sideload `app-release.apk` (Settings -> Apps -> Special access -> Install
-   unknown apps, or `adb install`).
+1. Sideload the APK for your CPU (most phones are arm64-v8a) from
+   Settings -> Apps -> Special access -> Install unknown apps, or via `adb
+   install`.
 2. Open the app. Tap "Pick index file" and choose `out/lviv-search.sqlite`
    (or any file ending in `-search.sqlite`). The system file picker opens -
    no special permission is asked. The app stream-copies the file into its own

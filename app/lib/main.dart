@@ -32,7 +32,7 @@ class MapIndexApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'POI search',
+        title: 'MapIdx',
         theme: theme(),
         debugShowCheckedModeBanner: false,
         home: const SearchPage(),
@@ -275,7 +275,7 @@ class _SearchPageState extends State<SearchPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
-          title: const Text('POI search'),
+          title: const Text('MapIdx'),
           actions: [
             if (_index != null)
               PopupMenuButton<_Menu>(
