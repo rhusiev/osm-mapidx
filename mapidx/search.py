@@ -223,8 +223,8 @@ def search(db_path: str, query: str, limit: int = 20,
            threshold: float = MIN_WORD_SCORE,
            origin: tuple[float, float] | None = None,
            within: tuple[float, float, float, float] | None = None) -> list[dict]:
-    """Ranked hits, each a dict of score, name, address, matched, named, lon, lat,
-    metres.
+    """Ranked hits, each a dict of score, name, address, matched, named, category,
+    lon, lat, metres.
 
     `within`, `(south, west, north, east)`, keeps only the places inside it, and
     before the cut to a few times `limit`: an index of a whole region holds more
@@ -274,6 +274,7 @@ def search(db_path: str, query: str, limit: int = 20,
         # stops needs the city itself still at the top. exact_count ties them
         # all, so areas (place=*, boundary=administrative) outrank POIs.
         "is_area": _is_area(category),
+        "category": category,
         "name": _primary_name(display),
         "address": _address_parts(display),
         "matched": [(query_words[i], ranked_dict[place][i])

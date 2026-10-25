@@ -146,6 +146,10 @@ class SearchEngineTests(unittest.TestCase):
         hits = {hit["name"]: hit["named"] for hit in search.search(self.path, "Славсько")}
         self.assertEqual(hits, {"Славсько": True, "Медовий двір": False})
 
+    def test_a_hit_says_what_it_is(self) -> None:
+        hits = {hit["name"]: hit["category"] for hit in search.search(self.path, "Славсько")}
+        self.assertEqual(hits, {"Славсько": "place=town", "Медовий двір": "tourism=hotel"})
+
 
 # Lviv's centre, and a box of about 10 km round it
 LVIV = (24.03, 49.84)
