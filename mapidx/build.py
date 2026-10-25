@@ -63,6 +63,17 @@ MAX_SUBDIVISIONS = 1
 MAX_CONTEXT_PARTS = 6
 INDEX_BBOX_PAD_DEG = 0.35
 
+# Named roads people look a street up by. Paths, tracks and service roads seldom
+# carry a name worth finding.
+STREET_KINDS = frozenset({
+    "trunk", "primary", "secondary", "tertiary", "unclassified", "residential",
+    "living_street", "pedestrian",
+})
+# Ways of one name closer than about this are one street: OSM splits a street at
+# junctions and tag changes, and draws a divided road as two ways. The same name
+# in the next village is kilometres away.
+STREET_JOIN_M = 60
+
 _M_PER_DEG_LAT = 110_574.0
 
 
@@ -224,6 +235,49 @@ def _name_variants(tags) -> list[tuple[str, str]]:
     return out
 
 
+@dataclass
+class _StreetWay:
+    osm_id: int
+    geom: object
+    variants: list[tuple[str, str]]
+    tags: dict[str, str]
+
+
+def _joined(ways: list[_StreetWay]) -> list[list[_StreetWay]]:
+    """Ways of one name, grouped into the streets they draw."""
+    geoms = [way.geom for way in ways]
+    reach = STREET_JOIN_M / _m_per_deg_lon(geoms[0].centroid.y)
+    left, right = STRtree(geoms).query(geoms, predicate="dwithin", distance=reach)
+    parent = list(range(len(ways)))
+
+    def root(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i, j in zip(left, right):
+        parent[root(i)] = root(j)
+    streets: dict[int, list[_StreetWay]] = {}
+    for i, way in enumerate(ways):
+        streets.setdefault(root(i), []).append(way)
+    return list(streets.values())
+
+
+def _street_place(ways: list[_StreetWay]):
+    """The street's longest way, a point on the street and all its names."""
+    longest = max(ways, key=lambda way: way.geom.length)
+    drawn = shapely.GeometryCollection([way.geom for way in ways])
+    point = nearest_points(drawn, drawn.centroid)[0]
+    variants, seen = [], set()
+    for way in ways:
+        for source, value in way.variants:
+            if value.casefold() not in seen:
+                seen.add(value.casefold())
+                variants.append((source, value))
+    return longest, point, variants
+
+
 def _named_objects(pbf: Path):
     return (osmium.FileProcessor(str(pbf))
             .with_areas()
@@ -289,58 +343,109 @@ CREATE INDEX names_place ON names(place_id);
 """
 
 
+class _PlaceWriter:
+    """Writes places and their name variants in batches."""
+
+    BATCH = 20_000
+
+    def __init__(self, db: sqlite3.Connection) -> None:
+        self._db = db
+        self._places: list[tuple] = []
+        self._names: list[tuple] = []
+        self.count = 0
+
+    def add(self, osm_type: str, osm_id: int, lon: float, lat: float, name: str,
+            category: str, context: list[str], tags: dict[str, str],
+            variants: list[tuple[str, str]]) -> None:
+        self.count += 1
+        self._places.append((self.count, osm_type, osm_id, lon, lat, name, category,
+                             ", ".join(context), json.dumps(tags, ensure_ascii=False)))
+        self._names.extend((self.count, source, value) for source, value in variants)
+        if len(self._places) >= self.BATCH:
+            self.flush()
+
+    def flush(self) -> None:
+        self._db.executemany("INSERT INTO places VALUES (?,?,?,?,?,?,?,?,?)",
+                             self._places)
+        self._db.executemany("INSERT INTO names VALUES (?,?,?)", self._names)
+        self._db.commit()
+        self._places, self._names = [], []
+
+
+def _in_bbox(bbox: tuple[float, float, float, float] | None,
+             lon: float, lat: float) -> bool:
+    return not bbox or (bbox[0] <= lon <= bbox[2] and bbox[1] <= lat <= bbox[3])
+
+
+def _add_poi(out: _PlaceWriter, obj, name: str, idx: Indexes,
+             bbox: tuple[float, float, float, float] | None) -> None:
+    tags = obj.tags
+    category = _poi_category(tags)
+    if category is None:
+        return
+    if obj.type_str() == "n":
+        lon, lat = obj.location.lon, obj.location.lat
+    else:
+        geom = _geometry(obj)
+        if geom is None or geom.is_empty:
+            return
+        centre = geom.centroid
+        lon, lat = centre.x, centre.y
+    variants = _name_variants(tags)
+    if not _in_bbox(bbox, lon, lat) or not variants:
+        return
+    context = idx.context_for(lon, lat, name, _clean(tags.get("addr:street")))
+    out.add(obj.type_str(), obj.id, lon, lat, name, category, context, dict(tags),
+            variants)
+
+
+def _street_way(obj) -> _StreetWay | None:
+    geom = _geometry(obj)
+    if geom is None or geom.is_empty:
+        return None
+    return _StreetWay(obj.id, geom, _name_variants(obj.tags), dict(obj.tags))
+
+
+def _add_streets(out: _PlaceWriter, name: str, ways: list[_StreetWay], idx: Indexes,
+                 bbox: tuple[float, float, float, float] | None) -> None:
+    """One place per street, however many ways OSM draws it with."""
+    for street in _joined(ways):
+        longest, point, variants = _street_place(street)
+        if _in_bbox(bbox, point.x, point.y) and variants:
+            out.add("w", longest.osm_id, point.x, point.y, name,
+                    f"highway={longest.tags['highway']}",
+                    idx.context_for(point.x, point.y, name, None), longest.tags,
+                    variants)
+
+
 def build_places(pbf: Path, db_path: Path, idx: Indexes,
                  bbox: tuple[float, float, float, float] | None = None,
                  progress=print) -> tuple[int, int]:
+    """Named POIs, and named streets, each with its context."""
     db_path.unlink(missing_ok=True)
     db = sqlite3.connect(db_path)
     db.executescript(SCHEMA)
+    out = _PlaceWriter(db)
 
-    place_rows, name_rows, place_id = [], [], 0
+    streets: dict[str, list[_StreetWay]] = {}
     for count, obj in enumerate(_named_objects(pbf), 1):
         if count % 250_000 == 0:
-            progress(f"  pass 2: {count:,} named objects, {place_id:,} places")
-        tags = obj.tags
-        name = _clean(tags.get("name"))
+            progress(f"  pass 2: {count:,} named objects, {out.count:,} places")
+        name = _clean(obj.tags.get("name"))
         if not name:
             continue
-        category = _poi_category(tags)
-        if category is None:
-            continue
-        if obj.type_str() == "n":
-            lon, lat = obj.location.lon, obj.location.lat
+        if obj.type_str() == "w" and obj.tags.get("highway") in STREET_KINDS:
+            way = _street_way(obj)
+            if way is not None:
+                streets.setdefault(name, []).append(way)
         else:
-            geom = _geometry(obj)
-            if geom is None or geom.is_empty:
-                continue
-            centre = geom.centroid
-            lon, lat = centre.x, centre.y
-        if bbox and not (bbox[0] <= lon <= bbox[2] and bbox[1] <= lat <= bbox[3]):
-            continue
-
-        variants = _name_variants(tags)
-        if not variants:
-            continue
-        context = idx.context_for(lon, lat, name, _clean(tags.get("addr:street")))
-
-        place_id += 1
-        place_rows.append((place_id, obj.type_str(), obj.id, lon, lat, name,
-                           category, ", ".join(context),
-                           json.dumps(dict(tags), ensure_ascii=False)))
-        name_rows.extend((place_id, source, value) for source, value in variants)
-
-        if len(place_rows) >= 20_000:
-            _flush(db, place_rows, name_rows)
-            place_rows, name_rows = [], []
-    _flush(db, place_rows, name_rows)
-    db.commit()
+            _add_poi(out, obj, name, idx, bbox)
+    pois = out.count
+    for name, ways in streets.items():
+        _add_streets(out, name, ways, idx, bbox)
+    out.flush()
+    progress(f"  pois: {pois:,}  streets: {out.count - pois:,}")
     counts = (db.execute("SELECT COUNT(*) FROM places").fetchone()[0],
               db.execute("SELECT COUNT(*) FROM names").fetchone()[0])
     db.close()
     return counts
-
-
-def _flush(db, place_rows, name_rows) -> None:
-    db.executemany("INSERT INTO places VALUES (?,?,?,?,?,?,?,?,?)", place_rows)
-    db.executemany("INSERT INTO names VALUES (?,?,?)", name_rows)
-    db.commit()

@@ -18,7 +18,7 @@ Three artefacts from one place table:
   `Медовий двір (Нижня Рожанка, Славсько, вул. Устияновичів, ...)`.
   Inherits OsmAnd's prefix matching, so no typo tolerance.
 - `out/<region>-search.sqlite` - a word index for the fuzzy layer, queried
-  outside OsmAnd. This is the part that survives typos. 91 MB for Lviv oblast,
+  outside OsmAnd. This is the part that survives typos. 117 MB for Lviv oblast,
   and a query answers in 2-60 ms, so it can run per keystroke on a phone.
 - `app/build/app/outputs/flutter-apk/app-<abi>-release.apk` - "MapIdx", a small
   Android app that hosts that fuzzy layer: type a query, see hits with
@@ -163,6 +163,14 @@ built in pass 1:
    village a POI belongs to, we index both instead of picking.
 3. **Street** - `addr:street` if tagged, else the nearest named `highway=*`
    within 120 m.
+
+Named streets are places too, so "Городоцька" finds the street and not only what
+stands on it. A street is a named `highway=*` of the kinds people look up by -
+trunk down to residential, living streets and pedestrian streets. OSM draws one
+street as many ways, split at junctions, and a divided road as two, so ways of
+one name within about 60 m of each other are joined into one place. It stands at
+the point of the street nearest its middle. The same name in the next village is
+a place of its own. That adds 25.8k streets to Lviv oblast's 117.9k POIs.
 
 Names are also romanised into two Latin schemes: the official Ukrainian
 standard (KMU 2010) and a naive phonetic one closer to how people actually type.
