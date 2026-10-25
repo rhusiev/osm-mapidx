@@ -21,7 +21,8 @@ def _build_index(places: dict[int, dict]) -> Path:
     """Write a tiny search index with the vocabulary test cases need.
 
     places[rowid] = {"name": str, "context": str, "category": str,
-                     "name_words": set[str], "context_words": set[str]}
+                     "name_words": set[str], "context_words": set[str]},
+    optionally with "lon" and "lat"
     """
     with tempfile.NamedTemporaryFile(suffix="-search.sqlite", delete=False) as f:
         path = Path(f.name)
@@ -31,7 +32,7 @@ def _build_index(places: dict[int, dict]) -> Path:
     for rid, place in places.items():
         db.execute(
             "INSERT INTO places VALUES (?,?,?,?,?,?,?)",
-            (rid, 23.4, 48.8,
+            (rid, place.get("lon", 23.4), place.get("lat", 48.8),
              emit.display_name(place["name"], place["context"]), place["category"],
              " ".join(sorted(place["name_words"])),
              " ".join(sorted(place["context_words"] - place["name_words"]))),
@@ -140,6 +141,36 @@ class SearchEngineTests(unittest.TestCase):
             self.assertLess(names.index("Славсько"),
                             names.index("Медовий двір"),
                             "exact-match place must rank ahead of context-match")
+
+    def test_named_tells_a_name_match_from_a_context_match(self) -> None:
+        hits = {hit["name"]: hit["named"] for hit in search.search(self.path, "Славсько")}
+        self.assertEqual(hits, {"Славсько": True, "Медовий двір": False})
+
+
+# Lviv's centre, and a box of about 10 km round it
+LVIV = (24.03, 49.84)
+LVIV_BOX = (49.79, 23.96, 49.89, 24.10)
+# A degree past the box: a town in the same oblast
+OBLAST_DEG = 1.0
+
+
+class WithinTests(unittest.TestCase):
+    def test_keeps_the_box_s_place_behind_more_than_it_cuts_to(self) -> None:
+        limit = 1
+        # search cuts its candidates to ten times the limit
+        far = {rid: {"name": "Шевченка", "context": "", "category": "highway=residential",
+                     "name_words": {"шевченка"}, "context_words": set(),
+                     "lon": LVIV[0] + OBLAST_DEG, "lat": LVIV[1]}
+               for rid in range(1, 10 * limit + 2)}
+        near = {"name": "Шевченка", "context": "Львів", "category": "highway=residential",
+                "name_words": {"шевченка"}, "context_words": {"львів"},
+                "lon": LVIV[0], "lat": LVIV[1]}
+        path = _build_index({**far, len(far) + 1: near})
+        self.addCleanup(path.unlink)
+
+        hits = search.search(path, "шевченка", limit, within=LVIV_BOX)
+
+        self.assertEqual([hit["address"] for hit in hits], [["Львів"]])
 
 
 if __name__ == "__main__":

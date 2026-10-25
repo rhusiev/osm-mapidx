@@ -55,6 +55,8 @@ MIN_PROBE = 3
 # context: everyone types the name, the context only narrows it.
 CONTEXT_PENALTY = 0.01
 EARTH_RADIUS_M = 6_371_000
+# SQLite's default cap on a statement's parameters, since 3.32
+MAX_VARIABLES = 32_766
 
 # The end of the Unicode range, so `word < prefix + LAST_CHAR` is every
 # extension of the prefix and nothing else.
@@ -123,7 +125,8 @@ def _resolve(db: sqlite3.Connection, word: str) -> tuple[list[tuple[str, float, 
     return matched, False
 
 
-def _tally(db: sqlite3.Connection, query_words: list[str]) -> tuple[dict[int, list[float]], dict[int, list[bool]]]:
+def _tally(db: sqlite3.Connection, query_words: list[str]) -> tuple[
+        dict[int, list[float]], dict[int, list[bool]], dict[int, list[bool]]]:
     """Every place some typed word resolves to, with that word's best score.
 
     The second return value flags per-place per-word whether the match was an
@@ -131,10 +134,15 @@ def _tally(db: sqlite3.Connection, query_words: list[str]) -> tuple[dict[int, li
     "Славсько" in a place called Славсько, not "Славського" in some POI's
     name. Counts of true flags over the query words rank a place above
     POIs whose names only start with the same prefix.
+
+    The third flags per-place per-word whether its best match was in the
+    place's own name at all, exact or not: a café on Shevchenka avenue is
+    found by "шевченка" through its address alone.
     """
     width = len(query_words)
     scores: dict[int, list[float]] = {}
     exact: dict[int, list[bool]] = {}
+    in_name: dict[int, list[bool]] = {}
     for index, word in enumerate(query_words):
         matched, names_only = _resolve(db, word)
         walked = 0
@@ -148,13 +156,15 @@ def _tally(db: sqlite3.Connection, query_words: list[str]) -> tuple[dict[int, li
                 here = score if named else score - CONTEXT_PENALTY
                 place_scores = scores.setdefault(ref >> 1, [0.0] * width)
                 place_exact = exact.setdefault(ref >> 1, [False] * width)
+                place_in_name = in_name.setdefault(ref >> 1, [False] * width)
                 if here > place_scores[index]:
                     place_scores[index] = here
                     place_exact[index] = named and is_exact
+                    place_in_name[index] = bool(named)
             walked += len(blob)
             if walked > MAX_REFS:
                 break
-    return scores, exact
+    return scores, exact, in_name
 
 
 def _complete(db: sqlite3.Connection, partial: list[tuple[int, list[float]]],
@@ -193,16 +203,39 @@ def _distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return math.hypot(dx, dy) * EARTH_RADIUS_M
 
 
+def _within(db: sqlite3.Connection, ranked: list[tuple[int, list[float]]],
+            box: tuple[float, float, float, float]) -> list[tuple[int, list[float]]]:
+    """The hits inside `box`, `(south, west, north, east)`, in their order."""
+    south, west, north, east = box
+    places = [place for place, _ in ranked]
+    per_query = MAX_VARIABLES - len(box)
+    inside: set[int] = set()
+    for start in range(0, len(places), per_query):
+        part = places[start:start + per_query]
+        inside.update(place for place, in db.execute(
+            "SELECT rowid FROM places WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ? "
+            f"AND rowid IN ({','.join('?' * len(part))})",
+            [south, north, west, east, *part]))
+    return [hit for hit in ranked if hit[0] in inside]
+
+
 def search(db_path: str, query: str, limit: int = 20,
            threshold: float = MIN_WORD_SCORE,
-           origin: tuple[float, float] | None = None) -> list[dict]:
-    """Ranked hits, each a dict of score, name, address, matched, lon, lat, metres."""
+           origin: tuple[float, float] | None = None,
+           within: tuple[float, float, float, float] | None = None) -> list[dict]:
+    """Ranked hits, each a dict of score, name, address, matched, named, lon, lat,
+    metres.
+
+    `within`, `(south, west, north, east)`, keeps only the places inside it, and
+    before the cut to a few times `limit`: an index of a whole region holds more
+    places of one name than that, and a box drawn round its hits afterwards can
+    be left with none of them."""
     query_words = WORD_RE.findall(normalise(query))
     if not query_words:
         return []
 
     db = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    scores_by_place, exact_by_place = _tally(db, query_words)
+    scores_by_place, exact_by_place, in_name_by_place = _tally(db, query_words)
     ranked = [(place, scores_by_place[place]) for place in scores_by_place
               if min(scores_by_place[place]) >= threshold]
     # Every word agreeing straight from the index is the common case and costs
@@ -213,6 +246,8 @@ def search(db_path: str, query: str, limit: int = 20,
                                  for place in scores_by_place
                                  if min(scores_by_place[place]) < threshold <= max(scores_by_place[place])],
                             query_words, threshold)
+    if within is not None:
+        ranked = _within(db, ranked, within)
     if not ranked:
         db.close()
         return []
@@ -243,6 +278,10 @@ def search(db_path: str, query: str, limit: int = 20,
         "address": _address_parts(display),
         "matched": [(query_words[i], ranked_dict[place][i])
                     for i in range(len(query_words))],
+        # Whether every query word was found in the place's own name rather
+        # than only in its surroundings. A word read off the place by
+        # _complete counts as not.
+        "named": all(in_name_by_place[place]),
         "lon": lon,
         "lat": lat,
         "metres": _distance_m(origin[0], origin[1], lat, lon) if origin else None,
